@@ -543,7 +543,7 @@ where
     /// May be used instead of `run_with_reader` to execute a single command.
     /// An example use case is to process command line args directly as a command:
     ///
-    /// ``` no_run
+    /// ```ignore
     /// //
     /// let mut repl = reedline_repl_rs::Repl::new(());
     /// // ... set up repl ...
