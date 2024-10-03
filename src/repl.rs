@@ -595,7 +595,7 @@ where
         let mut valid_commands: Vec<String> = self
             .commands
             .values()
-            .cloned()
+            .map(|command| command.name.clone())
             .collect();
         valid_commands.push("help".to_string());
         let completer = Box::new(ReplCompleter::new(&self.commands));
