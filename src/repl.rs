@@ -318,7 +318,7 @@ where
                 continue;
             };
             let cmd: ReplCommand<Context, E> =
-                ReplCommand::new_async(&name, command.clone(), *callback);
+                ReplCommand::new_async(name, command.clone(), *callback);
 
             self.commands.insert(name.to_string(), cmd);
         }
@@ -594,8 +594,8 @@ where
     fn build_line_editor(&mut self) -> Result<Reedline> {
         let mut valid_commands: Vec<String> = self
             .commands
-            .iter()
-            .map(|(_, command)| command.name.clone())
+            .values()
+            .cloned()
             .collect();
         valid_commands.push("help".to_string());
         let completer = Box::new(ReplCompleter::new(&self.commands));
