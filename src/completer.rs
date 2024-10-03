@@ -61,7 +61,13 @@ impl ReplCompleter {
         ReplCompleter { commands }
     }
 
-    fn build_suggestion(&self, value: &str, help: Option<&StyledStr>, span: Span, style: Option<Style>) -> Suggestion {
+    fn build_suggestion(
+        &self,
+        value: &str,
+        help: Option<&StyledStr>,
+        span: Span,
+        style: Option<Style>,
+    ) -> Suggestion {
         Suggestion {
             value: value.to_string(),
             description: help.map(|n| format!("{}", n)),
@@ -90,7 +96,9 @@ impl ReplCompleter {
                 arg.get_possible_values()
                     .iter()
                     .filter(|value| value.get_name().starts_with(search))
-                    .map(|value| self.build_suggestion(value.get_name(), value.get_help(), span, None)),
+                    .map(|value| {
+                        self.build_suggestion(value.get_name(), value.get_help(), span, None)
+                    }),
             );
 
             if let Some(long) = arg.get_long() {
@@ -113,7 +121,7 @@ impl ReplCompleter {
                 completions.push(self.build_suggestion(
                     subcommand.get_name(),
                     subcommand.get_after_help(),
-                    span, 
+                    span,
                     None,
                 ));
             }

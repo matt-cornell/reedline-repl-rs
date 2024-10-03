@@ -12,7 +12,7 @@ use nu_ansi_term::{Color, Style};
 use reedline::{
     self, default_emacs_keybindings, ColumnarMenu, DefaultHinter, DefaultValidator, Emacs,
     ExampleHighlighter, ExternalPrinter, FileBackedHistory, KeyCode, KeyModifiers, Keybindings,
-    Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    Prompt, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::boxed::Box;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ pub struct Repl<Context, E: Display> {
     banner: Option<String>,
     version: String,
     description: String,
-    prompt: ReplPrompt,
+    prompt: Box<dyn Prompt>,
     after_command_callback: Option<AfterCommandCallback<Context, E>>,
     #[cfg(feature = "async")]
     after_command_callback_async: Option<AsyncAfterCommandCallback<Context, E>>,
@@ -65,7 +65,7 @@ where
             KeyCode::Tab,
             ReedlineEvent::Menu("completion_menu".to_string()),
         );
-        let prompt = ReplPrompt::new(&paint_green_bold(&format!("{}> ", name)));
+        let prompt = Box::new(ReplPrompt::new(&paint_green_bold(&name)));
 
         Self {
             name,
@@ -95,7 +95,7 @@ where
     /// Give your Repl a name. This is used in the help summary for the Repl.
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = name.to_string();
-        self.with_formatted_prompt(name)
+        self.with_prompt_prefix(name)
     }
 
     /// Give your Repl a banner. This is printed at the start of running the Repl.
@@ -145,21 +145,24 @@ where
         self
     }
 
+    fn update_prefix(&mut self, prompt: &str) {
+        self.prompt = Box::new(ReplPrompt::new(&paint_green_bold(&format!("{}> ", prompt))));
+    }
+
     /// Give your Repl a custom prompt. The default prompt is the Repl name, followed by
     /// a `>`, all in green and bold, followed by a space:
     ///
     /// &Paint::green(format!("{}> ", name)).bold().to_string()
-    pub fn with_prompt(mut self, prompt: &str) -> Self {
-        self.prompt.update_prefix(prompt);
-
+    pub fn with_prompt_prefix(mut self, prompt: &str) -> Self {
+        self.update_prefix(prompt);
         self
     }
 
     /// Give your Repl a custom prompt while applying green/bold formatting automatically
     ///
     /// &Paint::green(format!("{}> ", name)).bold().to_string()
-    pub fn with_formatted_prompt(mut self, prompt: &str) -> Self {
-        self.prompt.update_prefix(prompt);
+    pub fn with_prompt(mut self, prompt: impl Prompt + 'static) -> Self {
+        self.prompt = Box::new(prompt);
 
         self
     }
@@ -449,9 +452,7 @@ where
     fn execute_after_command_callback(&mut self) -> core::result::Result<(), E> {
         if let Some(callback) = self.after_command_callback {
             match callback(&mut self.context) {
-                Ok(Some(new_prompt)) => {
-                    self.prompt.update_prefix(&new_prompt);
-                }
+                Ok(Some(pre)) => self.update_prefix(&pre),
                 Ok(None) => {}
                 Err(err) => {
                     eprintln!("failed to execute after_command_callback {:?}", err);
@@ -467,11 +468,8 @@ where
         self.execute_after_command_callback()?;
         if let Some(callback) = self.after_command_callback_async {
             match callback(&mut self.context).await {
-                Ok(new_prompt) => {
-                    if let Some(new_prompt) = new_prompt {
-                        self.prompt.update_prefix(&new_prompt);
-                    }
-                }
+                Ok(Some(pre)) => self.update_prefix(&pre),
+                Ok(None) => {}
                 Err(err) => {
                     eprintln!("failed to execute after_command_callback {:?}", err);
                 }
@@ -527,9 +525,11 @@ where
     #[cfg(not(feature = "shlex"))]
     fn parse_line(&self, line: &str) -> Option<Vec<String>> {
         let r = regex::Regex::new(r#"("[^"\n]+"|[\S]+)"#).unwrap();
-        Some(r.captures_iter(line)
-              .map(|a| a[0].to_string().replace('\"', ""))
-              .collect::<Vec<String>>())
+        Some(
+            r.captures_iter(line)
+                .map(|a| a[0].to_string().replace('\"', ""))
+                .collect::<Vec<String>>(),
+        )
     }
 
     #[cfg(feature = "shlex")]
@@ -567,7 +567,8 @@ where
     pub async fn process_argv_async(&mut self, argv: Vec<String>) -> core::result::Result<(), E> {
         let mut iter = argv.iter();
         if let Some(command) = iter.next() {
-            self.handle_command_async(command, &iter.map(AsRef::as_ref).collect::<Vec<&str>>()).await
+            self.handle_command_async(command, &iter.map(AsRef::as_ref).collect::<Vec<&str>>())
+                .await
         } else {
             Ok(())
         }
@@ -653,7 +654,7 @@ where
 
         loop {
             let sig = line_editor
-                .read_line(&self.prompt)
+                .read_line(&*self.prompt)
                 .expect("failed to read_line");
             match sig {
                 Signal::Success(line) => {
@@ -688,7 +689,7 @@ where
 
         loop {
             let sig = line_editor
-                .read_line(&self.prompt)
+                .read_line(&*self.prompt)
                 .expect("failed to read_line");
             match sig {
                 Signal::Success(line) => {
